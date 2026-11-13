@@ -1,5 +1,9 @@
 package com.documento.HistoricoApi.consumers;
 
+import java.util.Optional;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
@@ -71,5 +75,39 @@ class ConsultaEventConsumerTest {
 
         verify(historicoConsultaRepository).save(historicoCaptor.capture());
         assertThat(historicoCaptor.getValue().getStatus()).isEqualTo(StatusConsulta.AGENDADA);
+    }
+
+    @Test
+    void consumirDeveIgnorarEventoMaisAntigoQueOHistoricoGravado() {
+        HistoricoConsultaEntity cancelado = new HistoricoConsultaEntity(1, "Maria", "Rex", "Dr. João",
+                DIA_HORA, StatusConsulta.CANCELADA, OCORRIDO_EM.plusHours(1));
+        when(historicoConsultaRepository.findById(1)).thenReturn(Optional.of(cancelado));
+
+        consumer.consumir(criarEvento(TipoEvento.CRIADO)); // ocorrido 1 h antes do cancelamento
+
+        verify(historicoConsultaRepository, never()).save(any());
+    }
+
+    @Test
+    void consumirDeveIgnorarEventoRepetido() {
+        HistoricoConsultaEntity jaGravado = new HistoricoConsultaEntity(1, "Maria", "Rex", "Dr. João",
+                DIA_HORA, StatusConsulta.AGENDADA, OCORRIDO_EM);
+        when(historicoConsultaRepository.findById(1)).thenReturn(Optional.of(jaGravado));
+
+        consumer.consumir(criarEvento(TipoEvento.CRIADO)); // mesmo ocorridoEm
+
+        verify(historicoConsultaRepository, never()).save(any());
+    }
+
+    @Test
+    void consumirDeveAplicarEventoMaisNovo() {
+        HistoricoConsultaEntity agendado = new HistoricoConsultaEntity(1, "Maria", "Rex", "Dr. João",
+                DIA_HORA, StatusConsulta.AGENDADA, OCORRIDO_EM.minusHours(1));
+        when(historicoConsultaRepository.findById(1)).thenReturn(Optional.of(agendado));
+
+        consumer.consumir(criarEvento(TipoEvento.CANCELADA));
+
+        verify(historicoConsultaRepository).save(historicoCaptor.capture());
+        assertThat(historicoCaptor.getValue().getStatus()).isEqualTo(StatusConsulta.CANCELADA);
     }
 }
